@@ -1,2 +1,5 @@
-# sentinelai
-AI Agent Security, Red-Team &amp; Runtime Protection Platform
+# SentinelAI
+
+Autonomous AI Agent Security, Red-Team & Runtime Protection Platform.
+
+> 🚧 Currently under development
