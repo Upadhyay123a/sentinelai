@@ -105,30 +105,35 @@ sequenceDiagram
 
 They cover each other's weaknesses. The enforcement decision leans on the
 conservative rule so that evading the precise matcher does not defeat containment.
+This complementarity is validated empirically by the red-team harness — see
+`docs/redteam.md`, where an encoded payload is caught by the conservative rule
+alone and a no-untrusted-ingest payload by the precise rule alone.
 
-## Roadmap / future implementation
+## Roadmap / implementation status
 
-Built so far is the MVP (M1–M2): the reference-monitor gateway, provenance
-tracking, deterministic policy enforcement, and the verified OFF-vs-ON demo.
-Planned work extends the same architecture without changing the security model.
+Built through M4: the reference-monitor gateway, provenance tracking, deterministic
+policy enforcement, the verified OFF-vs-ON demo, a persistent SQLite audit store
+with a read-only incident viewer, and a probe/detector/harness red-team runner that
+scores attack variants into a confusion matrix. Planned work extends the same
+architecture without changing the security model.
 
 ```mermaid
 flowchart LR
-    subgraph DONE["Built — MVP"]
+    subgraph DONE["Built"]
         direction TB
         M1["M1 - Gateway + flagship attack<br/>(DISABLED baseline)"]
-        M2["M2 - Taint + Policy + Risk<br/>ENFORCE blocks - 14 tests"]
-        M1 --> M2
+        M2["M2 - Taint + Policy + Risk<br/>ENFORCE blocks exfil"]
+        M3["M3 - Persistent SQLite audit<br/>+ incident viewer"]
+        M4["M4 - Red-team harness<br/>confusion matrix, 0 FN / 0 FP"]
+        M1 --> M2 --> M3 --> M4
     end
     subgraph NEXT["Planned"]
         direction TB
-        M3["M3 - Persistent audit (Postgres)<br/>event query + dashboard"]
-        M4["M4 - Red-team runner<br/>attack catalog + scenarios"]
         M5["M5 - ML supporting signal<br/>anomaly detection, honest eval"]
         M6["M6 - RAG poisoning + DLP<br/>container hardening"]
-        M3 --> M4 --> M5 --> M6
+        M5 --> M6
     end
-    M2 --> M3
+    M4 --> M5
 ```
 
 Because the pipeline is stateless per call except for per-session provenance, it

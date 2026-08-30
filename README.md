@@ -76,12 +76,26 @@ tool_blocked    http_request   decision=BLOCK
 The block fires at the exact moment all three trifecta legs are present *and*
 pointed at an external sink — not on the database read, which is legitimate.
 
+## Red-team validation
+
+A probe/detector/harness red-team runner (modeled on garak / PyRIT) fires four
+attack variants and scores them into a confusion matrix — **zero false negatives,
+zero false positives**, including an encoded-secret payload that evades exact-match
+detection but is still caught by the conservative data-flow rule. See
+[`docs/redteam.md`](docs/redteam.md).
+
+```
+python -m redteam.runner
+```
+
 ## Run it
 
 ```bash
 python -m pip install -e ".[dev]"   # or: pip install pyyaml pytest
 python -m scenarios.flagship_exfil  # the OFF vs ON demo
-python -m pytest -v                 # 14 tests: taint, policy, mediation, e2e
+python -m scenarios.persist_demo    # run an incident into the SQLite audit store
+python -m redteam.runner            # red-team harness + confusion matrix
+python -m pytest -v                 # 25 tests: taint, policy, mediation, audit, redteam, e2e
 ```
 
 ## Repository layout
@@ -92,33 +106,34 @@ python -m pytest -v                 # 14 tests: taint, policy, mediation, e2e
 | `gateway/taint/`   | Provenance tracking; produces taint facts (never decides) |
 | `gateway/policy/`  | YAML policy-as-code + deny-overrides evaluation |
 | `gateway/risk/`    | Deterministic scoring formula (advisory only) |
-| `gateway/audit/`   | Append-only event store (evidence chain) |
+| `gateway/audit/`   | Append-only event store (in-memory + SQLite) + read-only viewer |
 | `agents/`          | Agent interface + a scripted compromised agent |
 | `agents/tools/`    | Tools tagged with trifecta capabilities |
+| `redteam/`         | Probe/detector/harness red-team runner |
 | `policies/`        | `trifecta.yaml` containment rules |
-| `scenarios/`       | The flagship OFF-vs-ON demo |
-| `tests/`           | Unit + mediation invariant + e2e acceptance |
-| `docs/`            | Architecture and threat model |
+| `scenarios/`       | Flagship OFF-vs-ON demo + persistence demo |
+| `tests/`           | Unit + mediation invariant + audit + red-team + e2e |
+| `docs/`            | Architecture, threat model, red-team results |
 
 ## Roadmap
 
 ```mermaid
 flowchart LR
-    subgraph DONE["Built — MVP (M1-M2)"]
+    subgraph DONE["Built"]
         direction TB
         M1["M1 - Gateway pass-through<br/>flagship attack succeeds"]
-        M2["M2 - Taint + Policy + Risk<br/>ENFORCE blocks exfil - 14 tests"]
-        M1 --> M2
+        M2["M2 - Taint + Policy + Risk<br/>ENFORCE blocks exfil"]
+        M3["M3 - Persistent SQLite audit<br/>+ read-only incident viewer"]
+        M4["M4 - Red-team harness<br/>confusion matrix, 0 FN / 0 FP"]
+        M1 --> M2 --> M3 --> M4
     end
     subgraph NEXT["Planned"]
         direction TB
-        M3["M3 - Persistent audit (Postgres)<br/>+ event query / dashboard"]
-        M4["M4 - Red-team runner<br/>+ more attack scenarios"]
         M5["M5 - ML supporting signal<br/>(honestly evaluated)"]
         M6["M6 - RAG poisoning + DLP<br/>+ hardening"]
-        M3 --> M4 --> M5 --> M6
+        M5 --> M6
     end
-    M2 --> M3
+    M4 --> M5
 ```
 
 ## Framework alignment
@@ -129,11 +144,13 @@ Applications**, and **MITRE ATLAS** exfiltration techniques.
 
 ## Status & limitations
 
-MVP (M1-M2): flagship scenario, taint tracking, policy enforcement, tests. The
-precise value-matcher can be evaded by encoding — which is why the *decision* rests
-on the conservative context-flow rule (any egress after untrusted ingest +
-sensitive access), accepting some false positives in exchange for not missing
-attacks. Context-level taint is coarse because the LLM is opaque; true token-level
-provenance inside the model isn't possible today.
+Built through M4: flagship scenario, taint tracking, policy enforcement, persistent
+audit + incident viewer, red-team harness, 25 tests. The precise value-matcher can
+be evaded by encoding — which is why the *decision* rests on the conservative
+context-flow rule (any egress after untrusted ingest + sensitive access), accepting
+some false positives in exchange for not missing attacks. Context-level taint is
+coarse because the LLM is opaque; true token-level provenance inside the model isn't
+possible today.
 
-See `docs/architecture.md` and `docs/threat-model.md` for the full reasoning.
+See `docs/architecture.md`, `docs/threat-model.md`, and `docs/redteam.md` for the
+full reasoning.
