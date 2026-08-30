@@ -1,0 +1,24 @@
+# SentinelAI policy-as-code — lethal-trifecta containment rules.
+- id: no-sensitive-exfil-under-untrusted-influence
+  description: >
+    Block external egress when the session has both ingested untrusted content
+    and accessed sensitive data (the lethal trifecta). Conservative context-flow
+    rule: high recall, does not require matching the exact value.
+  match:
+    call.is_external_sink: true
+    session.has_untrusted_ingest: true
+    session.has_sensitive_access: true
+  decision: BLOCK
+  severity: CRITICAL
+  references: [OWASP-LLM01, OWASP-LLM02, ATLAS-Exfiltration]
+
+- id: sensitive-value-in-egress
+  description: >
+    Block when a concrete known sensitive value appears in the arguments of an
+    external sink. Precise data-flow rule: high confidence, direct exfiltration.
+  match:
+    call.is_external_sink: true
+    call.args_contain_sensitive_value: true
+  decision: BLOCK
+  severity: CRITICAL
+  references: [OWASP-LLM02]
