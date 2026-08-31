@@ -1,5 +1,7 @@
 # SentinelAI
 
+![tests](https://github.com/Upadhyay123a/sentinelai/actions/workflows/ci.yml/badge.svg)
+
 **A runtime security gateway for AI agents — it stops an AI agent from being
 tricked into leaking your data.**
 
